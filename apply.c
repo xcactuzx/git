@@ -2913,7 +2913,7 @@ static int apply_one_fragment(struct apply_state *state,
 			break;
 		case ' ':
 			if (plen && (ws_rule & WS_BLANK_AT_EOF) &&
-			    ws_blank_line(patch + 1, plen, ws_rule))
+			    ws_blank_line(patch + 1, plen))
 				is_blank_context = 1;
 			/* fallthrough */
 		case '-':
@@ -2942,7 +2942,7 @@ static int apply_one_fragment(struct apply_state *state,
 				      (first == '+' ? 0 : LINE_COMMON));
 			if (first == '+' &&
 			    (ws_rule & WS_BLANK_AT_EOF) &&
-			    ws_blank_line(patch + 1, plen, ws_rule))
+			    ws_blank_line(patch + 1, plen))
 				added_blank_line = 1;
 			break;
 		case '@': case '\\':
@@ -4576,7 +4576,7 @@ static int write_out_one_reject(struct apply_state *state, struct patch *patch)
 	FILE *rej;
 	char namebuf[PATH_MAX];
 	struct fragment *frag;
-	int cnt = 0;
+	int fd, cnt = 0;
 	struct strbuf sb = STRBUF_INIT;
 
 	for (cnt = 0, frag = patch->fragments; frag; frag = frag->next) {
@@ -4616,7 +4616,17 @@ static int write_out_one_reject(struct apply_state *state, struct patch *patch)
 	memcpy(namebuf, patch->new_name, cnt);
 	memcpy(namebuf + cnt, ".rej", 5);
 
-	rej = fopen(namebuf, "w");
+	fd = open(namebuf, O_CREAT | O_EXCL | O_WRONLY, 0666);
+	if (fd < 0) {
+		if (errno != EEXIST)
+			return error_errno(_("cannot open %s"), namebuf);
+		if (unlink(namebuf))
+			return error_errno(_("cannot unlink '%s'"), namebuf);
+		fd = open(namebuf, O_CREAT | O_EXCL | O_WRONLY, 0666);
+		if (fd < 0)
+			return error_errno(_("cannot open %s"), namebuf);
+	}
+	rej = fdopen(fd, "w");
 	if (!rej)
 		return error_errno(_("cannot open %s"), namebuf);
 

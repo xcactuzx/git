@@ -345,11 +345,13 @@ struct itimerval {
 #endif
 
 #ifdef NO_SETITIMER
-static inline int setitimer(int which UNUSED,
-			    const struct itimerval *value UNUSED,
-			    struct itimerval *newvalue UNUSED) {
+static inline int git_setitimer(int which UNUSED,
+				const struct itimerval *value UNUSED,
+				struct itimerval *newvalue UNUSED) {
 	return 0; /* pretend success */
 }
+#undef setitimer
+#define setitimer(which,value,ovalue) git_setitimer(which,value,ovalue)
 #endif
 
 #ifndef NO_LIBGEN_H
@@ -1375,6 +1377,11 @@ static inline int regexec_buf(const regex_t *preg, const char *buf, size_t size,
 	return regexec(preg, buf, nmatch, pmatch, eflags | REG_STARTEND);
 }
 
+#ifdef USE_ENHANCED_BASIC_REGULAR_EXPRESSIONS
+int git_regcomp(regex_t *preg, const char *pattern, int cflags);
+#define regcomp git_regcomp
+#endif
+
 #ifndef DIR_HAS_BSD_GROUP_SEMANTICS
 # define FORCE_DIR_SET_GID S_ISGID
 #else
@@ -1510,14 +1517,19 @@ int open_nofollow(const char *path, int flags);
 #endif
 
 #ifndef _POSIX_THREAD_SAFE_FUNCTIONS
-static inline void flockfile(FILE *fh UNUSED)
+static inline void git_flockfile(FILE *fh UNUSED)
 {
 	; /* nothing */
 }
-static inline void funlockfile(FILE *fh UNUSED)
+static inline void git_funlockfile(FILE *fh UNUSED)
 {
 	; /* nothing */
 }
+#undef flockfile
+#undef funlockfile
+#undef getc_unlocked
+#define flockfile(fh) git_flockfile(fh)
+#define funlockfile(fh) git_funlockfile(fh)
 #define getc_unlocked(fh) getc(fh)
 #endif
 
