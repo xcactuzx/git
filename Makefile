@@ -464,6 +464,11 @@ include shared.mak
 #
 #     CURL_LDFLAGS=-lcurl
 #
+# Define LAZYLOAD_LIBCURL to dynamically load the libcurl; This can be useful
+# if Multiple libcurl versions exist (with different file names) that link to
+# various SSL/TLS backends, to support the `http.sslBackend` runtime switch in
+# such a scenario.
+#
 # === Optional library: libpcre2 ===
 #
 # Define USE_LIBPCRE if you have and want to use libpcre. Various
@@ -1600,10 +1605,19 @@ else
 		CURL_LIBCURL =
 	endif
 
-	ifndef CURL_LDFLAGS
-		CURL_LDFLAGS = $(eval CURL_LDFLAGS := $$(shell $$(CURL_CONFIG) --libs))$(CURL_LDFLAGS)
+	ifdef LAZYLOAD_LIBCURL
+		LAZYLOAD_LIBCURL_OBJ = compat/lazyload-curl.o
+		OBJECTS += $(LAZYLOAD_LIBCURL_OBJ)
+		# The `CURL_STATICLIB` constant must be defined to avoid seeing the functions
+		# declared as DLL imports
+		CURL_CFLAGS = -DCURL_STATICLIB
+		CURL_LIBCURL = -ldl
+	else
+		ifndef CURL_LDFLAGS
+			CURL_LDFLAGS = $(eval CURL_LDFLAGS := $$(shell $$(CURL_CONFIG) --libs))$(CURL_LDFLAGS)
+		endif
+		CURL_LIBCURL += $(CURL_LDFLAGS)
 	endif
-	CURL_LIBCURL += $(CURL_LDFLAGS)
 
 	ifndef CURL_CFLAGS
 		CURL_CFLAGS = $(eval CURL_CFLAGS := $$(shell $$(CURL_CONFIG) --cflags))$(CURL_CFLAGS)
@@ -2774,14 +2788,14 @@ endif
 git-%$X: %.o GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) $(LIBS)
 
-git-imap-send$X: imap-send.o http.o GIT-LDFLAGS $(GITLIBS)
+git-imap-send$X: imap-send.o http.o $(LAZYLOAD_LIBCURL_OBJ) GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(IMAP_SEND_LDFLAGS) $(LIBS)
 
-git-http-fetch$X: http.o http-walker.o http-fetch.o GIT-LDFLAGS $(GITLIBS)
+git-http-fetch$X: http.o http-walker.o http-fetch.o $(LAZYLOAD_LIBCURL_OBJ) GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(CURL_LIBCURL) $(LIBS)
-git-http-push$X: http.o http-push.o GIT-LDFLAGS $(GITLIBS)
+git-http-push$X: http.o http-push.o $(LAZYLOAD_LIBCURL_OBJ) GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(CURL_LIBCURL) $(EXPAT_LIBEXPAT) $(LIBS)
 
@@ -2791,7 +2805,7 @@ $(REMOTE_CURL_ALIASES): $(REMOTE_CURL_PRIMARY)
 	ln -s $< $@ 2>/dev/null || \
 	cp $< $@
 
-$(REMOTE_CURL_PRIMARY): remote-curl.o http.o http-walker.o GIT-LDFLAGS $(GITLIBS)
+$(REMOTE_CURL_PRIMARY): remote-curl.o http.o http-walker.o $(LAZYLOAD_LIBCURL_OBJ) GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(CURL_LIBCURL) $(EXPAT_LIBEXPAT) $(LIBS)
 
